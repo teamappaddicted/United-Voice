@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "475736493042",
+    "project_id": "unitedvoice-56240",
+    "storage_bucket": "unitedvoice-56240.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:475736493042:android:639553bb7893b07879b96b",
+        "android_client_info": {
+          "package_name": "com.example.unitedvoice"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDah68C7gGp2FX-RQoStnq3XEH3AB1CXnU"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
