@@ -3,6 +3,7 @@ import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:unitedvoice/MainHome.dart';
+import 'package:unitedvoice/UnitedVoiceApp.dart';
 import 'package:unitedvoice/main_Login.dart';
 
 
@@ -42,7 +43,7 @@ class MyApp extends StatelessWidget {
           if(snapshot.data==null){
             return const main_Login();
           }else{
-            return const MainHome();
+            return const UnitedVoiceApp();
           }
         }
         return Center(child: CircularProgressIndicator(),);
