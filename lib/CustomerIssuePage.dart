@@ -1,7 +1,9 @@
 // lib/user_form.dart
+import 'package:Xolve/UnitedVoiceApp.dart';
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:unitedvoice/MainHome.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+
 
 class CustomerIssuePage extends StatefulWidget {
   const CustomerIssuePage({super.key});
@@ -29,6 +31,22 @@ class _CustomerIssuePageState extends State<CustomerIssuePage> {
   bool _submitting = false;
 
   @override
+  void initState() {
+    super.initState();
+    _loadUserData(); // ✅ Auto-fill user info on page open
+  }
+
+  Future<void> _loadUserData() async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user != null) {
+      setState(() {
+        _fullNameCtrl.text = user.displayName ?? 'Anonymous User';
+        _emailCtrl.text = user.email ?? 'Unknown Email';
+      });
+    }
+  }
+
+  @override
   void dispose() {
     _fullNameCtrl.dispose();
     _emailCtrl.dispose();
@@ -38,24 +56,62 @@ class _CustomerIssuePageState extends State<CustomerIssuePage> {
     super.dispose();
   }
 
+  // ✅ Updated _submit function with profile photo logic
   Future<void> _submit() async {
     if (!_formKey.currentState!.validate()) return;
     setState(() => _submitting = true);
 
     try {
-      final customer = Customer(
-        fullName: _fullNameCtrl.text.trim(),
-        email: _emailCtrl.text.trim(),
-        companyName: _companyNameCtrl.text.trim(),
-        productId: _productIdCtrl.text.trim(),
-        category: _selectedCategory!,
-        issueDetails: _issueDetailsCtrl.text.trim(),
-        createdAt: DateTime.now(),
-      );
+      final currentUser = FirebaseAuth.instance.currentUser;
+      if (currentUser == null) throw Exception('User not logged in');
 
+      final userId = currentUser.uid;
+      final userName = currentUser.displayName ?? 'Anonymous User';
+      final userEmail = currentUser.email ?? 'Unknown Email';
+      String? finalPhotoURL;
+
+      // Step 1: Try to get photo from 'users' collection
+      final userDoc = await FirebaseFirestore.instance
+          .collection('users')
+          .doc(userId)
+          .get();
+
+      if (userDoc.exists && userDoc.data()!.containsKey('photoURL')) {
+        final photoFromDB = userDoc['photoURL'];
+        if (photoFromDB != null && photoFromDB.toString().isNotEmpty) {
+          finalPhotoURL = photoFromDB;
+        }
+      }
+
+      // Step 2: If not found, try Google Auth image
+      if (finalPhotoURL == null || finalPhotoURL.isEmpty) {
+        final googlePhoto = currentUser.photoURL;
+        if (googlePhoto != null && googlePhoto.isNotEmpty) {
+          finalPhotoURL = googlePhoto;
+        } else {
+          finalPhotoURL = ''; // Empty → handled in UI as name-based avatar
+        }
+      }
+
+      // Step 3: Prepare data
+      final issueData = {
+        'uid': FirebaseAuth.instance.currentUser!.uid,
+        'fullName': _fullNameCtrl.text.trim(),
+        'email': _emailCtrl.text.trim(),
+        'companyName': _companyNameCtrl.text.trim(),
+        'productId': _productIdCtrl.text.trim(),
+        'category': _selectedCategory!,
+        'issueDetails': _issueDetailsCtrl.text.trim(),
+        'createdAt': FieldValue.serverTimestamp(),
+        'photoURL': finalPhotoURL, // ✅ Store final photo
+        'votesCount': 0,
+        'votedUsers': [],
+      };
+
+      // Step 4: Add to Firestore
       await FirebaseFirestore.instance
           .collection('customer_issues')
-          .add(customer.toMap());
+          .add(issueData);
 
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -63,9 +119,7 @@ class _CustomerIssuePageState extends State<CustomerIssuePage> {
       );
 
       Navigator.of(context).pushAndRemoveUntil(
-        MaterialPageRoute(
-          builder: (context) => const MainHome(selectedIndex: 0),
-        ),
+        MaterialPageRoute(builder: (context) => const UnitedVoiceApp()),
         (route) => false,
       );
     } catch (e) {
@@ -83,10 +137,11 @@ class _CustomerIssuePageState extends State<CustomerIssuePage> {
     final theme = Theme.of(context);
 
     return Scaffold(
-      backgroundColor: Colors.black, // ✅ black background
+      backgroundColor: Colors.black,
       appBar: AppBar(
         backgroundColor: Colors.black,
-        title: const Text("Post a Problem", style: TextStyle(color: Colors.white)),
+        title:
+            const Text("Post a Problem", style: TextStyle(color: Colors.white)),
         centerTitle: true,
         elevation: 1,
       ),
@@ -105,15 +160,14 @@ class _CustomerIssuePageState extends State<CustomerIssuePage> {
                         controller: _fullNameCtrl,
                         label: "Full Name",
                         icon: Icons.person,
-                        hint: "e.g., John Doe",
+                        readOnly: true, // ✅ Non-editable
                       ),
                       const SizedBox(height: 14),
                       _darkTextField(
                         controller: _emailCtrl,
                         label: "Email Address",
                         icon: Icons.email,
-                        hint: "e.g., john.doe@gmail.com",
-                        keyboardType: TextInputType.emailAddress,
+                        readOnly: true, // ✅ Non-editable
                       ),
                       const SizedBox(height: 14),
                       _darkTextField(
@@ -139,28 +193,36 @@ class _CustomerIssuePageState extends State<CustomerIssuePage> {
                       const SizedBox(height: 14),
                       DropdownButtonFormField<String>(
                         value: _selectedCategory,
-                        dropdownColor: Colors.black, // ✅ dark dropdown
+                        dropdownColor: Colors.black,
                         style: const TextStyle(color: Colors.white),
                         decoration: const InputDecoration(
                           labelText: "Product Category",
                           labelStyle: TextStyle(color: Colors.white),
-                          prefixIcon: Icon(Icons.category, color: Colors.white),
+                          prefixIcon:
+                              Icon(Icons.category, color: Colors.white),
                           enabledBorder: OutlineInputBorder(
                             borderSide: BorderSide(color: Colors.white54),
-                            borderRadius: BorderRadius.all(Radius.circular(12)),
+                            borderRadius:
+                                BorderRadius.all(Radius.circular(12)),
                           ),
                           focusedBorder: OutlineInputBorder(
-                            borderSide: BorderSide(color: Colors.blue),
-                            borderRadius: BorderRadius.all(Radius.circular(12)),
+                            borderSide: BorderSide(color: Color(0xFF1BBD97)),
+                            borderRadius:
+                                BorderRadius.all(Radius.circular(12)),
                           ),
                         ),
                         items: _categories
-                            .map((c) => DropdownMenuItem(
-                                  value: c,
-                                  child: Text(c, style: const TextStyle(color: Colors.white)),
-                                ))
+                            .map(
+                              (c) => DropdownMenuItem(
+                                value: c,
+                                child: Text(c,
+                                    style:
+                                        const TextStyle(color: Colors.white)),
+                              ),
+                            )
                             .toList(),
-                        onChanged: (val) => setState(() => _selectedCategory = val),
+                        onChanged: (val) =>
+                            setState(() => _selectedCategory = val),
                         validator: (v) =>
                             v == null ? "Please select a category" : null,
                       ),
@@ -197,10 +259,13 @@ class _CustomerIssuePageState extends State<CustomerIssuePage> {
                               color: Colors.white,
                             ),
                           )
-                        : const Icon(Icons.save_alt),
+                        : const Icon(Icons.arrow_upward),
                     label: Text(
                       _submitting ? "Submitting..." : "Submit Issue",
-                      style: const TextStyle(fontSize: 16),
+                      style: TextStyle(
+                        fontSize: 16,
+                        color: _submitting ? Colors.white : Colors.black,
+                      ),
                     ),
                   ),
                 ),
@@ -220,9 +285,11 @@ class _CustomerIssuePageState extends State<CustomerIssuePage> {
     String? hint,
     int maxLines = 1,
     TextInputType? keyboardType,
+    bool readOnly = false,
   }) {
     return TextFormField(
       controller: controller,
+      readOnly: readOnly,
       maxLines: maxLines,
       keyboardType: keyboardType,
       style: const TextStyle(color: Colors.white),
@@ -237,12 +304,14 @@ class _CustomerIssuePageState extends State<CustomerIssuePage> {
           borderRadius: BorderRadius.all(Radius.circular(12)),
         ),
         focusedBorder: const OutlineInputBorder(
-          borderSide: BorderSide(color: Colors.white),
+          borderSide: BorderSide(color: Color(0xFF1BBD97)),
           borderRadius: BorderRadius.all(Radius.circular(12)),
         ),
       ),
-      validator: (v) =>
-          v == null || v.trim().isEmpty ? "$label is required" : null,
+      validator: (v) {
+        if (readOnly) return null;
+        return v == null || v.trim().isEmpty ? "$label is required" : null;
+      },
     );
   }
 }
@@ -256,9 +325,9 @@ class _SectionCard extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       decoration: BoxDecoration(
-        color: Colors.transparent, // ✅ transparent card
+        color: Colors.transparent,
         borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: Colors.white24, width: 1), // subtle border
+        border: Border.all(color: Colors.white24, width: 1),
       ),
       padding: const EdgeInsets.all(18),
       child: Column(
@@ -275,34 +344,4 @@ class _SectionCard extends StatelessWidget {
       ),
     );
   }
-}
-
-class Customer {
-  final String fullName;
-  final String email;
-  final String companyName;
-  final String productId;
-  final String category;
-  final String issueDetails;
-  final DateTime createdAt;
-
-  Customer({
-    required this.fullName,
-    required this.email,
-    required this.companyName,
-    required this.productId,
-    required this.category,
-    required this.issueDetails,
-    required this.createdAt,
-  });
-
-  Map<String, dynamic> toMap() => {
-        'fullName': fullName,
-        'email': email,
-        'companyName': companyName,
-        'productId': productId,
-        'category': category,
-        'issueDetails': issueDetails,
-        'createdAt': createdAt,
-      };
 }
